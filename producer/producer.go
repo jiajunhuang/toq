@@ -17,7 +17,7 @@ type Producer struct {
 }
 
 func NewProducer(p *redis.Pool) *Producer {
-    return &Producer{p}
+	return &Producer{p}
 }
 
 func (p *Producer) Enqueue(queue string, t task.Task) error {
