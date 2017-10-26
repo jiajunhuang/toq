@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/jiajunhuang/toq/producer"
@@ -39,5 +40,9 @@ func main() {
 	redisPool := NewRedisPool()
 	p := producer.NewProducer(redisPool)
 	t := task.Task{ID: "0", Key: "toq_worker", Args: "{}"}
-	p.Enqueue("test_toq_queue", t)
+	for {
+		logrus.Println("enqueue a job")
+		p.Enqueue("test_toq_queue", t)
+		time.Sleep(1 * time.Second)
+	}
 }
