@@ -33,5 +33,6 @@ func (p *Producer) Enqueue(queue string, t task.Task) error {
 	if err := conn.Send("RPUSH", queue, args); err != nil {
 		return err
 	}
+
 	return nil
 }

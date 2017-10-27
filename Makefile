@@ -2,7 +2,7 @@ BUILD=go build
 FLAGS=
 FMT=go fmt
 
-all: fmt main worker
+all: clean fmt main worker
 
 fmt:
 	$(FMT) github.com/jiajunhuang/toq/...
