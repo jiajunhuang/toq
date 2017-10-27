@@ -24,13 +24,27 @@ Task:
 
 ```go
 type Task struct {
+type Task struct {
 	ID         string   `json:"id"`
 	Retry      bool     `json:"retry"` // retry or not, by default not
 	MaxRetries int      `json:"max_retries"`
+	Tried      int      `json:"tried"` // retried times
 	Road       []string `json:"road"`  // all the queues the task enqueued by it's lifetime
 	State      int      `json:"state"` // current task state
 	Key        string   `json:"key"`   // the key to match which the function consumer runs
 	Args       string   `json:"args"`  // dumped json string
+}
+```
+
+Result:
+
+```go
+type Result struct {
+	TaskID     string `json:"task_id"`
+	WannaRetry bool   `json:"wanna_retry"` // if it wanna retry
+	State      int    `json:"state"`       // succeed or failed
+	Message    string `json:"message"`
+	Result     string `json:"result"` // dumped json it want return
 }
 ```
 
@@ -48,4 +62,10 @@ Consumer:
 type Dequeuer interface {
 	Dequeue() error
 }
+```
+
+And finally, all the executing unit(which means, worker) should be a function whose type is:
+
+```go
+type Worker func(task.Task) task.Result
 ```
