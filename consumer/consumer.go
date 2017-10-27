@@ -13,13 +13,17 @@ import (
 )
 
 var (
-	taskQueue   chan task.Task
-	concurrency = flag.Int("concurrency", 10, "how many tasks can be executing at a time")
+	concurrencyQueue chan int
+	concurrency      = flag.Int("concurrency", 10, "how many tasks can be executing at a time")
 )
 
 func init() {
 	flag.Parse()
-	taskQueue = make(chan task.Task, *concurrency)
+	concurrencyQueue = make(chan int, *concurrency)
+	// initial concurrencyQueue so the first <*concurrency> task can start
+	for i := 0; i < *concurrency; i++ {
+		concurrencyQueue <- i
+	}
 }
 
 type Dequeuer interface {
@@ -61,7 +65,6 @@ func (c *Consumer) Dequeue() error {
 		redisArgs = append(redisArgs, q)
 	}
 	redisArgs = append(redisArgs, c.timeout)
-	go c.Consume()
 
 	for {
 		queueAndTask, err := redis.Strings(conn.Do("BLPOP", redisArgs...))
@@ -89,32 +92,32 @@ func (c *Consumer) Dequeue() error {
 			logrus.Debugf("task %s is executing for the %d time", t.ID, t.Tried)
 		}
 
-		// go to execute the task
-		taskQueue <- t
+		// go to execute the task, but we should get token from concurrencyQueue first
+		go c.consume(t)
 	}
 }
 
-func (c *Consumer) Consume() {
-	for {
-		t := <-taskQueue
-		go func(t task.Task) {
-			// find the worker
-			w, ok := c.workers[t.Key]
-			if !ok {
-				logrus.Errorf("cannot find correspoding worker of task %s with key %s", t.ID, t.Key)
-				r := task.Result{TaskID: t.ID, State: task.ResultStateFailed, Message: "worker not found"}
-				c.SetResult(r)
-				return
-			}
+func (c *Consumer) consume(t task.Task) {
+	logrus.Infof("start to executing task %s", t.ID)
+	concurrencyToken := <-concurrencyQueue
+	defer func() {
+		concurrencyQueue <- concurrencyToken
+	}()
+	// find the worker
+	w, ok := c.workers[t.Key]
+	if !ok {
+		logrus.Errorf("cannot find correspoding worker of task %s with key %s", t.ID, t.Key)
+		r := task.Result{TaskID: t.ID, State: task.ResultStateFailed, Message: "worker not found"}
+		c.SetResult(r)
+		return
+	}
 
-			// run
-			r := w(t)
-			logrus.Debugf("task %s returned a result with state %d", t.ID, r.State)
-			c.SetResult(r)
-			if r.WannaRetry {
-				logrus.Warningf("the given task %s wanna retry but we don't support yet, given up", t.ID)
-			}
-		}(t)
+	// run
+	r := w(t)
+	logrus.Debugf("task %s returned a result with state %d", t.ID, r.State)
+	c.SetResult(r)
+	if r.WannaRetry {
+		logrus.Warningf("the given task %s wanna retry but we don't support yet, given up", t.ID)
 	}
 }
 
