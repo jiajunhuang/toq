@@ -15,9 +15,7 @@ type Dequeuer interface {
 	Dequeue() error
 }
 
-type Worker interface {
-	Run(t task.Task) task.Result
-}
+type Worker func(task.Task) task.Result
 
 type Consumer struct {
 	redisPool *redis.Pool
@@ -28,7 +26,7 @@ type Consumer struct {
 }
 
 func NewConsumer(p *redis.Pool, queues []string) *Consumer {
-	return &Consumer{redisPool: p, queues: queues}
+	return &Consumer{redisPool: p, queues: queues, workers: make(map[string]Worker)}
 }
 
 func (c *Consumer) RegisterWorker(key string, w Worker) error {
@@ -76,7 +74,7 @@ func (c *Consumer) Dequeue() error {
 			continue
 		} else {
 			t.Tried++
-			logrus.Infof("task(%s) is executing for the %d time", t.ID, t.Tried)
+			logrus.Debugf("task %s is executing for the %d time", t.ID, t.Tried)
 		}
 
 		// continue to execute the task
@@ -90,11 +88,11 @@ func (c *Consumer) Dequeue() error {
 		}
 
 		// run
-		r := w.Run(t)
-		logrus.Infof("task %s returned a result with state %d", t.ID, r.State)
+		r := w(t)
+		logrus.Debugf("task %s returned a result with state %d", t.ID, r.State)
 		c.SetResult(r)
 		if r.WannaRetry {
-			logrus.Infof("the given task %s wanna retry but we don't support yet, given up", t.ID)
+			logrus.Warningf("the given task %s wanna retry but we don't support yet, given up", t.ID)
 		}
 	}
 }

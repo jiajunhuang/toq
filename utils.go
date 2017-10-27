@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,4 +21,9 @@ func NewRedisPool() *redis.Pool {
 			return c, nil
 		},
 	}
+}
+
+func UUID4() string {
+	u, _ := uuid.NewRandom()
+	return u.String()
 }
