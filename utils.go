@@ -1,11 +1,20 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+)
+
+var (
+	redisPasswd = flag.String("redisPasswd", "", "")
+	redisURI    = flag.String("redisURI", "", "")
+	redisDBNum  = flag.Int("redisDBNum", 0, "")
+	maxIdle     = flag.Int("maxIdle", 1024, "")
+	maxActive   = flag.Int("maxActive", 100, "")
 )
 
 func NewRedisPool() *redis.Pool {

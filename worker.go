@@ -9,14 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	redisPasswd = flag.String("redisPasswd", "", "")
-	redisURI    = flag.String("redisURI", "", "")
-	redisDBNum  = flag.Int("redisDBNum", 0, "")
-	maxIdle     = flag.Int("maxIdle", 1024, "")
-	maxActive   = flag.Int("maxActive", 100, "")
-)
-
 func Run(t task.Task) task.Result {
 	logrus.Infof("running task %s...", t.ID)
 	time.Sleep(10 * time.Second)
