@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/jiajunhuang/toq/task"
@@ -13,12 +14,15 @@ import (
 )
 
 var (
+	sleepy           int
+	sleepyQueue      chan time.Duration
 	concurrencyQueue chan int
 	concurrency      = flag.Int("concurrency", 10, "how many tasks can be executing at a time")
 )
 
 func init() {
 	flag.Parse()
+	sleepyQueue = make(chan time.Duration)
 	concurrencyQueue = make(chan int, *concurrency)
 	// initial concurrencyQueue so the first <*concurrency> task can start
 	for i := 0; i < *concurrency; i++ {
@@ -49,7 +53,7 @@ func (c *Consumer) RegisterWorker(key string, w Worker) error {
 	defer c.l.Unlock()
 
 	if _, ok := c.workers[key]; ok {
-		return errors.New("The key has been registed.")
+		return errors.New("the key has been registed")
 	}
 	c.workers[key] = w
 
@@ -67,6 +71,16 @@ func (c *Consumer) Dequeue() error {
 	redisArgs = append(redisArgs, c.timeout)
 
 	for {
+		// we set a sleepy queue here, because, by default, the for-loop will BLPOP all the existing
+		// items in c.queues, but, consumer may be busy, and we have a concurrency limit, so, we use
+		// sleepy queue to controll concurrency
+		select {
+		case sleepTime := <-sleepyQueue:
+			sleepy++
+			time.Sleep(sleepTime * time.Second)
+		default:
+			sleepy = 0
+		}
 		queueAndTask, err := redis.Strings(conn.Do("BLPOP", redisArgs...))
 		if err != nil {
 			logrus.Errorln(err)
@@ -98,11 +112,16 @@ func (c *Consumer) Dequeue() error {
 }
 
 func (c *Consumer) consume(t task.Task) {
-	logrus.Infof("start to executing task %s", t.ID)
-	concurrencyToken := <-concurrencyQueue
-	defer func() {
-		concurrencyQueue <- concurrencyToken
-	}()
+	select {
+	case concurrencyToken := <-concurrencyQueue:
+		logrus.Infof("start to executing task %s", t.ID)
+		defer func() {
+			concurrencyQueue <- concurrencyToken
+		}()
+	default:
+		logrus.Infof("too busy, I'm sleepy. sleep for %d seconds", 2*sleepy)
+		sleepyQueue <- time.Duration(2 * sleepy)
+	}
 	// find the worker
 	w, ok := c.workers[t.Key]
 	if !ok {

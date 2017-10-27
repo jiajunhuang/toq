@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 
 	"github.com/jiajunhuang/toq/producer"
 	"github.com/jiajunhuang/toq/task"
@@ -15,8 +14,9 @@ func main() {
 	redisPool := NewRedisPool()
 	p := producer.NewProducer(redisPool)
 	for {
-		logrus.Println("enqueue a job")
-		t := task.Task{ID: fmt.Sprintf("task_%d", UUID4()), Key: "test_key", Args: "{}"}
+		taskID := UUID4()
+		logrus.Infof("enqueue task %s", taskID)
+		t := task.Task{ID: taskID, Key: "test_key", Args: "{}"}
 		p.Enqueue("test_toq_queue", t)
 	}
 }
