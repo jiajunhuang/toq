@@ -24,7 +24,6 @@ Task:
 
 ```go
 type Task struct {
-type Task struct {
 	ID         string   `json:"id"`
 	Retry      bool     `json:"retry"` // retry or not, by default not
 	MaxRetries int      `json:"max_retries"`
