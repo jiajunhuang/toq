@@ -3,6 +3,7 @@ package consumer
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"sync"
 
@@ -10,6 +11,16 @@ import (
 	"github.com/jiajunhuang/toq/task"
 	"github.com/sirupsen/logrus"
 )
+
+var (
+	taskQueue   chan task.Task
+	concurrency = flag.Int("concurrency", 10, "how many tasks can be executing at a time")
+)
+
+func init() {
+	flag.Parse()
+	taskQueue = make(chan task.Task, *concurrency)
+}
 
 type Dequeuer interface {
 	Dequeue() error
@@ -50,6 +61,7 @@ func (c *Consumer) Dequeue() error {
 		redisArgs = append(redisArgs, q)
 	}
 	redisArgs = append(redisArgs, c.timeout)
+	go c.Consume()
 
 	for {
 		queueAndTask, err := redis.Strings(conn.Do("BLPOP", redisArgs...))
@@ -77,23 +89,32 @@ func (c *Consumer) Dequeue() error {
 			logrus.Debugf("task %s is executing for the %d time", t.ID, t.Tried)
 		}
 
-		// continue to execute the task
-		// find the worker
-		w, ok := c.workers[t.Key]
-		if !ok {
-			logrus.Errorf("cannot find correspoding worker of task %s with key %s", t.ID, t.Key)
-			r := task.Result{TaskID: t.ID, State: task.ResultStateFailed, Message: "worker not found"}
-			c.SetResult(r)
-			continue
-		}
+		// go to execute the task
+		taskQueue <- t
+	}
+}
 
-		// run
-		r := w(t)
-		logrus.Debugf("task %s returned a result with state %d", t.ID, r.State)
-		c.SetResult(r)
-		if r.WannaRetry {
-			logrus.Warningf("the given task %s wanna retry but we don't support yet, given up", t.ID)
-		}
+func (c *Consumer) Consume() {
+	for {
+		t := <-taskQueue
+		go func(t task.Task) {
+			// find the worker
+			w, ok := c.workers[t.Key]
+			if !ok {
+				logrus.Errorf("cannot find correspoding worker of task %s with key %s", t.ID, t.Key)
+				r := task.Result{TaskID: t.ID, State: task.ResultStateFailed, Message: "worker not found"}
+				c.SetResult(r)
+				return
+			}
+
+			// run
+			r := w(t)
+			logrus.Debugf("task %s returned a result with state %d", t.ID, r.State)
+			c.SetResult(r)
+			if r.WannaRetry {
+				logrus.Warningf("the given task %s wanna retry but we don't support yet, given up", t.ID)
+			}
+		}(t)
 	}
 }
 
