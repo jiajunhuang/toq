@@ -96,6 +96,6 @@ If you want to learn more, please visit https://github.com/jiajunhuang/toq
 - [x] Easy to learn and use
 - [x] Language non-specific protocol
 - [x] Distributed(with support by broker, like Redis)
-- [ ] HA
-- [ ] Retry
+- [x] Retry
 - [ ] Graceful restart
+- [ ] HA

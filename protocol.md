@@ -24,10 +24,9 @@ Task:
 
 ```go
 type Task struct {
-type Task struct {
 	ID         string   `json:"id"`
 	Retry      bool     `json:"retry"` // retry or not, by default not
-	MaxRetries int      `json:"max_retries"`
+	MaxRetries int      `json:"max_retries"` // 0 based, which means, start from 0
 	Tried      int      `json:"tried"` // retried times
 	Road       []string `json:"road"`  // all the queues the task enqueued by it's lifetime
 	State      int      `json:"state"` // current task state

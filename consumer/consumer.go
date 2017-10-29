@@ -95,18 +95,8 @@ func (c *Consumer) Dequeue() error {
 			continue
 		}
 
-		t.Road = append(t.Road, queue)
-		if t.Retry && t.Tried > t.MaxRetries {
-			logrus.Errorf("max reties time exceed in task: %s", t.ID)
-			r := task.Result{TaskID: t.ID, State: task.ResultStateFailed, Message: "max retry time exceed"}
-			c.SetResult(r)
-			continue
-		} else {
-			t.Tried++
-			logrus.Debugf("task %s is executing for the %d time", t.ID, t.Tried)
-		}
-
 		// go to execute the task, but we should get token from concurrencyQueue first
+		t.Road = append(t.Road, queue)
 		go c.consume(t)
 	}
 }
@@ -133,10 +123,13 @@ func (c *Consumer) consume(t task.Task) {
 
 	// run
 	r := w(t)
-	logrus.Debugf("task %s returned a result with state %d", t.ID, r.State)
+	logrus.Infof("task %s returned a result with state %d, road: %v, wanna retry: %t, max retries: %d, tried: %d", t.ID, r.State, t.Road, r.WannaRetry, t.MaxRetries, t.Tried)
 	c.SetResult(r)
-	if r.WannaRetry {
-		logrus.Warningf("the given task %s wanna retry but we don't support yet, given up", t.ID)
+	if r.WannaRetry && t.Retry && t.Tried < t.MaxRetries {
+		t.Tried++
+		t.Road = append(t.Road, fmt.Sprintf("retry_time_%d", t.Tried))
+		logrus.Infof("start to retry task %s %d-ed time", t.ID, t.Tried)
+		go c.consume(t) // or, just call it recursively?
 	}
 }
 

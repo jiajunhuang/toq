@@ -12,9 +12,8 @@ import (
 func Run(t task.Task) task.Result {
 	logrus.Infof("running task %s...", t.ID)
 	time.Sleep(10 * time.Second)
-	logrus.Infof("task %s succeed", t.ID)
 
-	return task.Result{TaskID: t.ID, State: task.ResultStateSucceed, Message: "succeed"}
+	return task.Result{TaskID: t.ID, WannaRetry: true, State: task.ResultStateFailed, Message: "failed"}
 }
 
 func main() {
