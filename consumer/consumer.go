@@ -3,7 +3,6 @@ package consumer
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -17,17 +16,10 @@ var (
 	sleepy           int
 	sleepyQueue      chan time.Duration
 	concurrencyQueue chan int
-	concurrency      = flag.Int("concurrency", 10, "how many tasks can be executing at a time")
 )
 
 func init() {
-	flag.Parse()
 	sleepyQueue = make(chan time.Duration)
-	concurrencyQueue = make(chan int, *concurrency)
-	// initial concurrencyQueue so the first <*concurrency> task can start
-	for i := 0; i < *concurrency; i++ {
-		concurrencyQueue <- i
-	}
 }
 
 type Dequeuer interface {
@@ -44,7 +36,13 @@ type Consumer struct {
 	l         sync.RWMutex
 }
 
-func NewConsumer(p *redis.Pool, queues []string) *Consumer {
+func NewConsumer(p *redis.Pool, queues []string, concurrency int) *Consumer {
+	concurrencyQueue = make(chan int, concurrency)
+	// initial concurrencyQueue so the first <*concurrency> task can start
+	for i := 0; i < concurrency; i++ {
+		concurrencyQueue <- i
+	}
+
 	return &Consumer{redisPool: p, queues: queues, workers: make(map[string]Worker)}
 }
 

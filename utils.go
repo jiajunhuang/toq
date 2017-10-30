@@ -10,11 +10,11 @@ import (
 )
 
 var (
-	redisPasswd = flag.String("redisPasswd", "", "")
-	redisURI    = flag.String("redisURI", "", "")
-	redisDBNum  = flag.Int("redisDBNum", 0, "")
-	maxIdle     = flag.Int("maxIdle", 1024, "")
-	maxActive   = flag.Int("maxActive", 100, "")
+	redisPasswd = flag.String("redisPasswd", "", "redis password")
+	redisURI    = flag.String("redisURI", "", "redis uri")
+	redisDBNum  = flag.Int("redisDBNum", 0, "redis db num, default to 0")
+	maxIdle     = flag.Int("maxIdle", 1024, "max idle in redis")
+	maxActive   = flag.Int("maxActive", 100, "max active connections in redis")
 )
 
 func NewRedisPool() *redis.Pool {
