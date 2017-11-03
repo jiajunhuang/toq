@@ -14,12 +14,12 @@ import (
 
 var (
 	sleepy           int
-	sleepyQueue      chan time.Duration
+	sleepyQueue      chan int
 	concurrencyQueue chan int
 )
 
 func init() {
-	sleepyQueue = make(chan time.Duration)
+	sleepyQueue = make(chan int)
 }
 
 type Dequeuer interface {
@@ -43,7 +43,7 @@ func NewConsumer(p *redis.Pool, queues []string, concurrency int) *Consumer {
 		concurrencyQueue <- i
 	}
 
-	return &Consumer{redisPool: p, queues: queues, workers: make(map[string]Worker)}
+	return &Consumer{redisPool: p, queues: queues, workers: make(map[string]Worker), timeout: 20}
 }
 
 func (c *Consumer) RegisterWorker(key string, w Worker) error {
@@ -75,7 +75,7 @@ func (c *Consumer) Dequeue() error {
 		select {
 		case sleepTime := <-sleepyQueue:
 			sleepy++
-			time.Sleep(sleepTime * time.Second)
+			time.Sleep(time.Duration(sleepTime) * time.Second)
 		default:
 			sleepy = 0
 		}
@@ -100,15 +100,21 @@ func (c *Consumer) Dequeue() error {
 }
 
 func (c *Consumer) consume(t task.Task) {
+loop:
 	select {
 	case concurrencyToken := <-concurrencyQueue:
 		logrus.Infof("start to executing task %s", t.ID)
 		defer func() {
+			logrus.Infof("task %s give back the token %s", t.ID, concurrencyToken)
 			concurrencyQueue <- concurrencyToken
 		}()
 	default:
 		logrus.Infof("too busy, I'm sleepy. sleep for %d seconds", 2*sleepy)
-		sleepyQueue <- time.Duration(2 * sleepy)
+		go func() {
+			sleepyQueue <- 2 * sleepy
+		}()
+		time.Sleep(time.Duration(2*sleepy) * time.Second)
+		goto loop
 	}
 	// find the worker
 	w, ok := c.workers[t.Key]
@@ -122,12 +128,13 @@ func (c *Consumer) consume(t task.Task) {
 	// run
 	r := w(t)
 	logrus.Infof("task %s returned a result with state %d, road: %v, wanna retry: %t, max retries: %d, tried: %d", t.ID, r.State, t.Road, r.WannaRetry, t.MaxRetries, t.Tried)
-	c.SetResult(r)
 	if r.WannaRetry && t.Retry && t.Tried < t.MaxRetries {
 		t.Tried++
 		t.Road = append(t.Road, fmt.Sprintf("retry_time_%d", t.Tried))
 		logrus.Infof("start to retry task %s %d-ed time", t.ID, t.Tried)
 		go c.consume(t) // or, just call it recursively?
+	} else {
+		c.SetResult(r)
 	}
 }
 

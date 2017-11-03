@@ -13,7 +13,7 @@ func main() {
 
 	redisPool := NewRedisPool()
 	p := producer.NewProducer(redisPool)
-	for {
+	for i := 0; i < 15; i++ {
 		taskID := UUID4()
 		logrus.Infof("enqueue task %s", taskID)
 		t := task.Task{ID: taskID, Retry: true, MaxRetries: 1, Key: "test_key", Args: "{}"}
