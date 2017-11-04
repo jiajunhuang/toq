@@ -97,5 +97,5 @@ If you want to learn more, please visit https://github.com/jiajunhuang/toq
 - [x] Language non-specific protocol
 - [x] Distributed(with support by broker, like Redis)
 - [x] Retry
-- [ ] Graceful restart
+- [x] Graceful restart
 - [ ] HA

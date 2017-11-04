@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -27,6 +28,8 @@ type Consumer struct {
 	concurrency chan int
 	sleep       chan int
 	sleepy      int
+	wg          sync.WaitGroup
+	Sig         chan os.Signal
 }
 
 func NewConsumer(p *redis.Pool, queues []string, maxConcurrency int) *Consumer {
@@ -37,7 +40,7 @@ func NewConsumer(p *redis.Pool, queues []string, maxConcurrency int) *Consumer {
 		timeout:     20,
 		sleep:       make(chan int),
 		concurrency: make(chan int, maxConcurrency),
-		sleepy:      0,
+		Sig:         make(chan os.Signal, 1),
 	}
 	for i := 0; i < maxConcurrency; i++ {
 		c.concurrency <- i
@@ -76,6 +79,9 @@ func (c *Consumer) Dequeue() error {
 		case sleepTime := <-c.sleep:
 			c.sleepy++
 			time.Sleep(time.Duration(sleepTime) * time.Second)
+		case s := <-c.Sig:
+			logrus.Warnf("received a signal %s", s)
+			goto restart
 		default:
 			c.sleepy = 0
 		}
@@ -97,9 +103,17 @@ func (c *Consumer) Dequeue() error {
 		t.Road = append(t.Road, queue)
 		go c.consume(t)
 	}
+
+restart:
+	logrus.Warnf("wait for all tokens and then exit")
+	c.wg.Wait()
+	return nil
 }
 
 func (c *Consumer) consume(t task.Task) {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
 loop:
 	select {
 	case concurrencyToken := <-c.concurrency:
