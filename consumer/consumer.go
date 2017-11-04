@@ -12,16 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	sleepy           int
-	sleepyQueue      chan int
-	concurrencyQueue chan int
-)
-
-func init() {
-	sleepyQueue = make(chan int)
-}
-
 type Dequeuer interface {
 	Dequeue() error
 }
@@ -29,21 +19,31 @@ type Dequeuer interface {
 type Worker func(task.Task) task.Result
 
 type Consumer struct {
-	redisPool *redis.Pool
-	queues    []string
-	timeout   int
-	workers   map[string]Worker
-	l         sync.RWMutex
+	redisPool   *redis.Pool
+	queues      []string
+	timeout     int
+	workers     map[string]Worker
+	l           sync.RWMutex
+	concurrency chan int
+	sleep       chan int
+	sleepy      int
 }
 
-func NewConsumer(p *redis.Pool, queues []string, concurrency int) *Consumer {
-	concurrencyQueue = make(chan int, concurrency)
-	// initial concurrencyQueue so the first <*concurrency> task can start
-	for i := 0; i < concurrency; i++ {
-		concurrencyQueue <- i
+func NewConsumer(p *redis.Pool, queues []string, maxConcurrency int) *Consumer {
+	c := Consumer{
+		redisPool:   p,
+		queues:      queues,
+		workers:     make(map[string]Worker),
+		timeout:     20,
+		sleep:       make(chan int),
+		concurrency: make(chan int, maxConcurrency),
+		sleepy:      0,
+	}
+	for i := 0; i < maxConcurrency; i++ {
+		c.concurrency <- i
 	}
 
-	return &Consumer{redisPool: p, queues: queues, workers: make(map[string]Worker), timeout: 20}
+	return &c
 }
 
 func (c *Consumer) RegisterWorker(key string, w Worker) error {
@@ -73,11 +73,11 @@ func (c *Consumer) Dequeue() error {
 		// items in c.queues, but, consumer may be busy, and we have a concurrency limit, so, we use
 		// sleepy queue to controll concurrency
 		select {
-		case sleepTime := <-sleepyQueue:
-			sleepy++
+		case sleepTime := <-c.sleep:
+			c.sleepy++
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 		default:
-			sleepy = 0
+			c.sleepy = 0
 		}
 		queueAndTask, err := redis.Strings(conn.Do("BLPOP", redisArgs...))
 		if err != nil {
@@ -102,18 +102,18 @@ func (c *Consumer) Dequeue() error {
 func (c *Consumer) consume(t task.Task) {
 loop:
 	select {
-	case concurrencyToken := <-concurrencyQueue:
+	case concurrencyToken := <-c.concurrency:
 		logrus.Infof("start to executing task %s", t.ID)
 		defer func() {
-			logrus.Infof("task %s give back the token %s", t.ID, concurrencyToken)
-			concurrencyQueue <- concurrencyToken
+			logrus.Infof("task %s give back the token %d", t.ID, concurrencyToken)
+			c.concurrency <- concurrencyToken
 		}()
 	default:
-		logrus.Infof("too busy, I'm sleepy. sleep for %d seconds", 2*sleepy)
+		logrus.Infof("too busy, I'm sleepy. sleep for %d seconds", 2*c.sleepy)
 		go func() {
-			sleepyQueue <- 2 * sleepy
+			c.sleep <- 2 * c.sleepy
 		}()
-		time.Sleep(time.Duration(2*sleepy) * time.Second)
+		time.Sleep(time.Duration(2*c.sleepy) * time.Second)
 		goto loop
 	}
 	// find the worker
