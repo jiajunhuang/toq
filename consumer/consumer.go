@@ -26,7 +26,6 @@ type Consumer struct {
 	workers     map[string]Worker
 	l           sync.RWMutex
 	concurrency chan int
-	sleep       chan int
 	sleepy      int
 	wg          sync.WaitGroup
 	Sig         chan os.Signal
@@ -37,8 +36,7 @@ func NewConsumer(p *redis.Pool, queues []string, maxConcurrency int) *Consumer {
 		redisPool:   p,
 		queues:      queues,
 		workers:     make(map[string]Worker),
-		timeout:     20,
-		sleep:       make(chan int),
+		timeout:     5,
 		concurrency: make(chan int, maxConcurrency),
 		Sig:         make(chan os.Signal, 1),
 	}
@@ -71,23 +69,33 @@ func (c *Consumer) Dequeue() error {
 	}
 	redisArgs = append(redisArgs, c.timeout)
 
+loop:
 	for {
 		// we set a sleepy queue here, because, by default, the for-loop will BLPOP all the existing
 		// items in c.queues, but, consumer may be busy, and we have a concurrency limit, so, we use
 		// sleepy queue to controll concurrency
+		var token int
 		select {
-		case sleepTime := <-c.sleep:
-			c.sleepy++
-			time.Sleep(time.Duration(sleepTime) * time.Second)
 		case s := <-c.Sig:
 			logrus.Warnf("received a signal %s", s)
 			goto restart
 		default:
+
+		}
+		select {
+		case token = <-c.concurrency:
+			logrus.Debugf("got token %d", token)
 			c.sleepy = 0
+		default:
+			c.sleepy++
+			logrus.Warnf("sleep %d seconds", c.sleepy*2)
+			time.Sleep(time.Duration(c.sleepy*2) * time.Second)
+			goto loop
 		}
 		queueAndTask, err := redis.Strings(conn.Do("BLPOP", redisArgs...))
 		if err != nil {
 			logrus.Errorln(err)
+			c.concurrency <- token
 			continue
 		}
 
@@ -96,12 +104,14 @@ func (c *Consumer) Dequeue() error {
 		err = json.Unmarshal([]byte(taskS), &t)
 		if err != nil {
 			logrus.Errorf("failed to unmarshal task %s with error: %s", taskS, err)
+			c.concurrency <- token
 			continue
 		}
 
 		// go to execute the task, but we should get token from concurrencyQueue first
 		t.Road = append(t.Road, queue)
-		go c.consume(t)
+		logrus.Infof("start to execute task %s with token %d", t.ID, token)
+		go c.consume(t, token)
 	}
 
 restart:
@@ -110,26 +120,9 @@ restart:
 	return nil
 }
 
-func (c *Consumer) consume(t task.Task) {
+func (c *Consumer) consume(t task.Task, token int) {
 	c.wg.Add(1)
 	defer c.wg.Done()
-
-loop:
-	select {
-	case concurrencyToken := <-c.concurrency:
-		logrus.Infof("start to executing task %s", t.ID)
-		defer func() {
-			logrus.Infof("task %s give back the token %d", t.ID, concurrencyToken)
-			c.concurrency <- concurrencyToken
-		}()
-	default:
-		logrus.Infof("too busy, I'm sleepy. sleep for %d seconds", 2*c.sleepy)
-		go func() {
-			c.sleep <- 2 * c.sleepy
-		}()
-		time.Sleep(time.Duration(2*c.sleepy) * time.Second)
-		goto loop
-	}
 	// find the worker
 	w, ok := c.workers[t.Key]
 	if !ok {
@@ -146,9 +139,10 @@ loop:
 		t.Tried++
 		t.Road = append(t.Road, fmt.Sprintf("retry_time_%d", t.Tried))
 		logrus.Infof("start to retry task %s %d-ed time", t.ID, t.Tried)
-		go c.consume(t) // or, just call it recursively?
+		go c.consume(t, token) // or, just call it recursively?
 	} else {
 		c.SetResult(r)
+		c.concurrency <- token
 	}
 }
 

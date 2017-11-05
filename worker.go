@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -44,7 +43,9 @@ func main() {
 
 	// graceful restart
 	logrus.Warnf("graceful restarting...")
-	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Run()
+	execSpec := &syscall.ProcAttr{
+		Env:   os.Environ(),
+		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
+	}
+	syscall.ForkExec(os.Args[0], os.Args, execSpec)
 }
