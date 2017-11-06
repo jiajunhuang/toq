@@ -98,4 +98,6 @@ If you want to learn more, please visit https://github.com/jiajunhuang/toq
 - [x] Distributed(with support by broker, like Redis)
 - [x] Retry
 - [x] Graceful restart
+- [ ] Exception/Panic handle
+- [ ] Retry countdown
 - [ ] HA
