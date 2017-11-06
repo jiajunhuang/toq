@@ -1,7 +1,22 @@
 # toq
 
-toq pronounces `to queue`, which is a simple distributed task queue based on [Redis](https://redis.io), it is inspired
-by [Python-RQ](http://python-rq.org/).
+toq pronounces `to queue`, which is a distributed task queue.
+
+## Features
+
+- [x] Concurrent task executor
+- [x] Easy to learn and use
+- [x] Language non-specific protocol
+- [x] Distributed(with support by broker, like Redis)
+- [x] Retry
+- [x] Graceful restart
+- [x] Redis as broker
+- [ ] Exception/Panic handle
+- [ ] Retry countdown
+- [ ] RabbitMQ as broker
+- [ ] Kafka as broker
+- [ ] NSQ as broker
+- [ ] HA
 
 ## Usage
 
@@ -89,15 +104,3 @@ func main() {
 ```
 
 If you want to learn more, please visit https://github.com/jiajunhuang/toq
-
-## Features
-
-- [x] Concurrent task executor
-- [x] Easy to learn and use
-- [x] Language non-specific protocol
-- [x] Distributed(with support by broker, like Redis)
-- [x] Retry
-- [x] Graceful restart
-- [ ] Exception/Panic handle
-- [ ] Retry countdown
-- [ ] HA
