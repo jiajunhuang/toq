@@ -17,7 +17,7 @@ var (
 	debug       = flag.Bool("debug", false, "debug or not")
 )
 
-func Run(t task.Task) task.Result {
+func TaskSleep(t task.Task) task.Result {
 	logrus.Infof("running task %s...", t.ID)
 	time.Sleep(10 * time.Second)
 
@@ -34,12 +34,12 @@ func main() {
 
 	redisPool := NewRedisPool()
 
-	c := consumer.NewConsumer(redisPool, []string{"test_toq_queue"}, *concurrency)
-	if err := c.RegisterWorker("test_key", Run); err != nil {
+	c := consumer.NewRedisConsumer(redisPool, []string{"test_toq_queue"}, *concurrency)
+	if err := c.RegisterWorker("test_key", TaskSleep); err != nil {
 		logrus.Errorf("failed to register worker with error: %s", err)
 	}
 	signal.Notify(c.Sig, syscall.SIGUSR1)
-	c.Dequeue()
+	c.Run()
 
 	// graceful restart
 	logrus.Warnf("graceful restarting...")
